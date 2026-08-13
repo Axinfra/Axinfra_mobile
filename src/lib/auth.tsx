@@ -9,7 +9,15 @@ export interface AuthUser {
   name: string;
 }
 
+// Matches VALID_ROLES in the web repo's src/app/api/auth/register/route.ts
+export type SignupRole = 'CLIENT' | 'PMC' | 'VENDOR' | 'CONSULTANT' | 'SITE_ENGINEER';
+
 interface LoginResponse {
+  token: string;
+  user: AuthUser;
+}
+
+interface SignupResponse {
   token: string;
   user: AuthUser;
 }
@@ -19,6 +27,7 @@ interface AuthContextValue {
   /** True while restoring a persisted session on app start. */
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  signup: (name: string, email: string, password: string, role: SignupRole) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -58,13 +67,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(res.user);
   }
 
+  async function signup(name: string, email: string, password: string, role: SignupRole) {
+    const res = await apiFetch<SignupResponse>('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ name, email, password, preferredRole: role }),
+    });
+    await setSessionItem(SESSION_TOKEN_KEY, res.token);
+    setUser(res.user);
+  }
+
   async function logout() {
     await deleteSessionItem(SESSION_TOKEN_KEY);
     setUser(null);
   }
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, signup, logout }}>
       {children}
     </AuthContext.Provider>
   );

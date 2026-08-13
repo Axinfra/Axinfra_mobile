@@ -1,5 +1,5 @@
-import { Link, useRouter } from 'expo-router';
-import { AlertCircle, ArrowRight, Eye, EyeOff } from 'lucide-react-native';
+import { Link } from 'expo-router';
+import { AlertCircle, CheckCircle2, Eye, EyeOff } from 'lucide-react-native';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -18,65 +18,93 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AxinfraLogo } from '@/components/brand/axinfra-logo';
 import { GoogleIcon } from '@/components/brand/google-icon';
 import { Brand, BrandRadius, withAlpha } from '@/constants/brand';
-import { ApiError, useAuth } from '@/lib/auth';
+import { ApiError, useAuth, type SignupRole } from '@/lib/auth';
 
-// Same demo accounts as the web login page's fillDemo() — see
-// src/app/auth/login/page.tsx in the web repo. Keep in sync with
-// prisma/seed.ts if the seeded demo users ever change.
-const DEMO_ROLES = [
-  { id: 'client', label: 'Client', email: 'client@example.com' },
-  { id: 'pmc', label: 'PMC', email: 'pmc@example.com' },
-  { id: 'vendor', label: 'Vendor', email: 'vendor@example.com' },
-  { id: 'consultant', label: 'Consultant', email: 'consultant@example.com' },
-  { id: 'siteengineer', label: 'Site Engineer', email: 'siteengineer@example.com' },
-] as const;
-const DEMO_PASSWORD = 'password123';
+// Same roles as the web register page's ROLES array — see
+// src/app/auth/register/page.tsx in the web repo.
+const ROLES: { id: SignupRole; label: string; icon: string; desc: string }[] = [
+  { id: 'CLIENT', label: 'Client', icon: '🏢', desc: 'Project owner' },
+  { id: 'PMC', label: 'PMC', icon: '📋', desc: 'Project manager' },
+  { id: 'VENDOR', label: 'Vendor', icon: '🔧', desc: 'Contractor' },
+  { id: 'CONSULTANT', label: 'Consultant', icon: '💡', desc: 'Specialist' },
+  { id: 'SITE_ENGINEER', label: 'Site Engineer', icon: '👷', desc: 'Read-only site view' },
+];
 
-export default function LoginScreen() {
-  const router = useRouter();
-  const { login } = useAuth();
+const PASSWORD_RULES = [
+  { label: 'At least 8 characters', test: (p: string) => p.length >= 8 },
+  { label: 'One uppercase letter', test: (p: string) => /[A-Z]/.test(p) },
+  { label: 'One number', test: (p: string) => /[0-9]/.test(p) },
+];
+
+export default function RegisterScreen() {
+  const { signup } = useAuth();
+  const [selectedRole, setSelectedRole] = useState<SignupRole | null>(null);
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  const passwordOk = PASSWORD_RULES.every((r) => r.test(password));
+  const canSubmit = !submitting && !!name && !!email && passwordOk && !!selectedRole;
+
   async function handleSubmit() {
+    if (!selectedRole) {
+      setError('Please select your role to continue.');
+      return;
+    }
     setError(null);
     setSubmitting(true);
     try {
-      await login(email.trim(), password);
+      await signup(name.trim(), email.trim().toLowerCase(), password, selectedRole);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not sign in. Check your connection.');
+      setError(err instanceof ApiError ? err.message : 'Could not create your account. Check your connection.');
     } finally {
       setSubmitting(false);
     }
   }
 
-  function fillDemo(demoEmail: string) {
-    setEmail(demoEmail);
-    setPassword(DEMO_PASSWORD);
-  }
-
   return (
     <View style={styles.root}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <SafeAreaView style={styles.flex}>
           <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
             <AxinfraLogo size="md" />
 
             <View style={styles.headingBlock}>
-              <Text style={styles.heading}>Welcome back</Text>
-              <Text style={styles.subheading}>Sign in to your Axinfra workspace.</Text>
+              <Text style={styles.heading}>Create account</Text>
+              <Text style={styles.subheading}>Join Axinfra and start managing your projects.</Text>
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.label}>I am joining as</Text>
+              <View style={styles.roleGrid}>
+                {ROLES.map((role) => {
+                  const active = selectedRole === role.id;
+                  return (
+                    <Pressable
+                      key={role.id}
+                      onPress={() => setSelectedRole(role.id)}
+                      style={[styles.roleCard, active && styles.roleCardActive]}>
+                      <Text style={styles.roleIcon}>{role.icon}</Text>
+                      <Text style={[styles.roleLabel, active && styles.roleLabelActive]}>{role.label}</Text>
+                      <Text style={[styles.roleDesc, active && styles.roleDescActive]}>{role.desc}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
             </View>
 
             <Pressable
               style={styles.googleButton}
-              onPress={() =>
-                Alert.alert('Google sign-in', 'Not available in the app yet — use email and password below.')
-              }>
+              onPress={() => {
+                if (!selectedRole) {
+                  setError('Please select your role first.');
+                  return;
+                }
+                Alert.alert('Google sign-in', 'Not available in the app yet — use the form below.');
+              }}>
               <GoogleIcon />
               <Text style={styles.googleButtonText}>Continue with Google</Text>
             </Pressable>
@@ -96,7 +124,19 @@ export default function LoginScreen() {
 
             <View style={styles.form}>
               <View style={styles.field}>
-                <Text style={styles.label}>Email</Text>
+                <Text style={styles.label}>Full name</Text>
+                <TextInput
+                  style={styles.input}
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="Your name"
+                  placeholderTextColor={withAlpha(Brand.textRgb, 0.35)}
+                  autoComplete="name"
+                />
+              </View>
+
+              <View style={styles.field}>
+                <Text style={styles.label}>Work email</Text>
                 <TextInput
                   style={styles.input}
                   value={email}
@@ -110,24 +150,18 @@ export default function LoginScreen() {
               </View>
 
               <View style={styles.field}>
-                <View style={styles.labelRow}>
-                  <Text style={styles.label}>Password</Text>
-                  <Text style={styles.link}>Forgot password?</Text>
-                </View>
+                <Text style={styles.label}>Password</Text>
                 <View style={styles.passwordWrap}>
                   <TextInput
                     style={[styles.input, styles.passwordInput]}
                     value={password}
                     onChangeText={setPassword}
-                    placeholder="••••••••"
+                    placeholder="Minimum 8 characters"
                     placeholderTextColor={withAlpha(Brand.textRgb, 0.35)}
                     secureTextEntry={!showPassword}
-                    autoComplete="password"
+                    autoComplete="password-new"
                   />
-                  <Pressable
-                    style={styles.eyeToggle}
-                    onPress={() => setShowPassword((v) => !v)}
-                    hitSlop={8}>
+                  <Pressable style={styles.eyeToggle} onPress={() => setShowPassword((v) => !v)} hitSlop={8}>
                     {showPassword ? (
                       <EyeOff size={16} color={withAlpha(Brand.textRgb, 0.5)} />
                     ) : (
@@ -135,42 +169,39 @@ export default function LoginScreen() {
                     )}
                   </Pressable>
                 </View>
+
+                {password.length > 0 && (
+                  <View style={styles.ruleList}>
+                    {PASSWORD_RULES.map((rule) => {
+                      const ok = rule.test(password);
+                      return (
+                        <View key={rule.label} style={styles.ruleRow}>
+                          <CheckCircle2 size={12} color={ok ? Brand.success : withAlpha(Brand.textRgb, 0.2)} />
+                          <Text style={[styles.ruleText, ok && styles.ruleTextOk]}>{rule.label}</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
               </View>
 
               <Pressable
-                style={[styles.submit, (submitting || !email || !password) && styles.submitDisabled]}
-                disabled={submitting || !email || !password}
+                style={[styles.submit, !canSubmit && styles.submitDisabled]}
+                disabled={!canSubmit}
                 onPress={handleSubmit}>
                 {submitting ? (
                   <ActivityIndicator color={Brand.btnText} />
                 ) : (
-                  <>
-                    <Text style={styles.submitText}>Sign in</Text>
-                    <ArrowRight size={14} color={Brand.btnText} style={{ opacity: 0.5 }} />
-                  </>
+                  <Text style={styles.submitText}>Create account</Text>
                 )}
               </Pressable>
             </View>
 
             <View style={styles.signupRow}>
-              <Text style={styles.signupText}>Don&apos;t have an account? </Text>
-              <Link href="/register" replace={false}>
-                <Text style={styles.link}>Create account</Text>
+              <Text style={styles.signupText}>Already have an account? </Text>
+              <Link href="/login">
+                <Text style={styles.link}>Sign in</Text>
               </Link>
-            </View>
-
-            <View style={styles.demoSection}>
-              <Text style={styles.demoLabel}>Demo Access</Text>
-              <View style={styles.demoRow}>
-                {DEMO_ROLES.map((role, i) => (
-                  <View key={role.id} style={styles.demoChipWrap}>
-                    <Pressable onPress={() => fillDemo(role.email)}>
-                      <Text style={styles.demoChip}>{role.label}</Text>
-                    </Pressable>
-                    {i < DEMO_ROLES.length - 1 && <Text style={styles.demoDot}>·</Text>}
-                  </View>
-                ))}
-              </View>
             </View>
           </ScrollView>
         </SafeAreaView>
@@ -206,6 +237,47 @@ const styles = StyleSheet.create({
   subheading: {
     color: withAlpha(Brand.textRgb, 0.5),
     fontSize: 14,
+  },
+  roleGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  roleCard: {
+    flexBasis: '31%',
+    flexGrow: 1,
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    borderRadius: BrandRadius.btn,
+    borderWidth: 1,
+    borderColor: Brand.border,
+    backgroundColor: Brand.overlay,
+  },
+  roleCardActive: {
+    borderColor: withAlpha(Brand.accentRgb, 0.55),
+    backgroundColor: withAlpha(Brand.accentRgb, 0.1),
+  },
+  roleIcon: {
+    fontSize: 18,
+  },
+  roleLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: withAlpha(Brand.textRgb, 0.45),
+    textAlign: 'center',
+  },
+  roleLabelActive: {
+    color: Brand.accent,
+  },
+  roleDesc: {
+    fontSize: 9,
+    color: withAlpha(Brand.textRgb, 0.25),
+    textAlign: 'center',
+  },
+  roleDescActive: {
+    color: withAlpha(Brand.accentRgb, 0.7),
   },
   googleButton: {
     flexDirection: 'row',
@@ -264,11 +336,6 @@ const styles = StyleSheet.create({
   field: {
     gap: 6,
   },
-  labelRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
   label: {
     color: withAlpha(Brand.textRgb, 0.55),
     fontSize: 11,
@@ -296,6 +363,22 @@ const styles = StyleSheet.create({
   eyeToggle: {
     position: 'absolute',
     right: 12,
+  },
+  ruleList: {
+    gap: 4,
+    paddingTop: 4,
+  },
+  ruleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  ruleText: {
+    fontSize: 11,
+    color: withAlpha(Brand.textRgb, 0.3),
+  },
+  ruleTextOk: {
+    color: withAlpha(Brand.textRgb, 0.6),
   },
   submit: {
     flexDirection: 'row',
@@ -327,39 +410,5 @@ const styles = StyleSheet.create({
     color: Brand.accent,
     fontSize: 14,
     fontWeight: '500',
-  },
-  demoSection: {
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: Brand.border,
-    gap: 12,
-  },
-  demoLabel: {
-    textAlign: 'center',
-    color: withAlpha(Brand.textRgb, 0.3),
-    fontSize: 11,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  demoRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  demoChipWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  demoChip: {
-    color: withAlpha(Brand.textRgb, 0.5),
-    fontSize: 12,
-    fontWeight: '500',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  demoDot: {
-    color: withAlpha(Brand.textRgb, 0.1),
   },
 });
