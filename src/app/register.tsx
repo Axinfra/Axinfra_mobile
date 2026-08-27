@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -20,10 +21,11 @@ import { GoogleIcon } from '@/components/brand/google-icon';
 import { Brand, BrandRadius, withAlpha } from '@/constants/brand';
 import { ApiError, useAuth, type SignupRole } from '@/lib/auth';
 
-// Same roles as the web register page's ROLES array — see
-// src/app/auth/register/page.tsx in the web repo.
+// Same roles as the web register page's ROLES array — see src/app/auth/register/page.tsx in the
+// web repo. CLIENT is deliberately excluded — the platform charges per project, so a Client
+// account is only ever created by an admin approving a request submitted at
+// /request-project on the web app, never by self-service registration (web or mobile).
 const ROLES: { id: SignupRole; label: string; icon: string; desc: string }[] = [
-  { id: 'CLIENT', label: 'Client', icon: '🏢', desc: 'Project owner' },
   { id: 'PMC', label: 'PMC', icon: '📋', desc: 'Project manager' },
   { id: 'VENDOR', label: 'Vendor', icon: '🔧', desc: 'Contractor' },
   { id: 'CONSULTANT', label: 'Consultant', icon: '💡', desc: 'Specialist' },
@@ -94,6 +96,13 @@ export default function RegisterScreen() {
                   );
                 })}
               </View>
+              <Text style={styles.requestNote}>
+                Looking to set up a new project as the owner?{' '}
+                <Text style={styles.requestLink} onPress={() => Linking.openURL('https://www.axinfra.in/request-project')}>
+                  Request access
+                </Text>{' '}
+                on the website — we'll email you login details once it's approved.
+              </Text>
             </View>
 
             <Pressable
@@ -278,6 +287,16 @@ const styles = StyleSheet.create({
   },
   roleDescActive: {
     color: withAlpha(Brand.accentRgb, 0.7),
+  },
+  requestNote: {
+    fontSize: 12,
+    color: withAlpha(Brand.textRgb, 0.4),
+    marginTop: 12,
+    lineHeight: 17,
+  },
+  requestLink: {
+    color: Brand.accent,
+    fontWeight: '600',
   },
   googleButton: {
     flexDirection: 'row',

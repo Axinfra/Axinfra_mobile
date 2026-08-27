@@ -8,6 +8,20 @@ const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
 export const SESSION_TOKEN_KEY = 'axinfra_session_token';
 
+/** Full URL + Authorization header for a request outside apiFetch's JSON-envelope handling —
+ * e.g. downloading a binary PDF (see payments/[projectId].tsx's RA Bill download), which needs
+ * the raw Response, not a parsed-and-unwrapped body. */
+export async function getAuthenticatedRequestInit(path: string): Promise<{ url: string; headers: Record<string, string> }> {
+  if (!API_URL) {
+    throw new Error('EXPO_PUBLIC_API_URL is not set. Copy .env.example to .env and point it at your API.');
+  }
+  const token = await getSessionItem(SESSION_TOKEN_KEY);
+  return {
+    url: `${API_URL}${path}`,
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  };
+}
+
 export class ApiError extends Error {
   status: number;
   body: unknown;
@@ -52,10 +66,16 @@ export async function apiFetch<T = unknown>(path: string, opts: RequestInit = {}
 
   const token = await getSessionItem(SESSION_TOKEN_KEY);
 
+  // FormData bodies (file uploads — see documents/[projectId]/upload.tsx) must NOT get an
+  // explicit Content-Type: the runtime sets `multipart/form-data; boundary=...` itself when it
+  // serializes the body, and a hardcoded 'application/json' here would make the server fail to
+  // parse the multipart payload at all.
+  const isFormData = typeof FormData !== 'undefined' && opts.body instanceof FormData;
+
   const res = await fetch(`${API_URL}${path}`, {
     ...opts,
     headers: {
-      'Content-Type': 'application/json',
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...opts.headers,
     },

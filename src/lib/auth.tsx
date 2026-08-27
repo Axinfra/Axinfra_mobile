@@ -10,7 +10,9 @@ export interface AuthUser {
 }
 
 // Matches VALID_ROLES in the web repo's src/app/api/auth/register/route.ts
-export type SignupRole = 'CLIENT' | 'PMC' | 'VENDOR' | 'CONSULTANT' | 'SITE_ENGINEER';
+// CLIENT excluded — the platform charges per project, so a Client account is only ever created
+// by an admin approving a request at /request-project on the web app, never self-registered.
+export type SignupRole = 'PMC' | 'VENDOR' | 'CONSULTANT' | 'SITE_ENGINEER';
 
 interface LoginResponse {
   token: string;
