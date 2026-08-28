@@ -20,10 +20,20 @@ export function classifyActivity(activity: Activity, today: Date): ActivityBucke
   return 'UPCOMING';
 }
 
+function plannedEndTime(activity: Activity): number {
+  return activity.plannedEnd ? new Date(activity.plannedEnd).getTime() : Infinity;
+}
+
 export function groupActivitiesByStatus(activities: Activity[], today: Date = startOfDay(new Date())): Record<ActivityBucket, Activity[]> {
   const groups: Record<ActivityBucket, Activity[]> = { DUE_TODAY: [], UPCOMING: [], OVERDUE: [], COMPLETED: [] };
   for (const activity of activities) {
     groups[classifyActivity(activity, today)].push(activity);
   }
+  // Soonest due date first within Upcoming/Overdue, so the next thing coming up leads the list
+  // instead of whatever order the API happened to return (previously just insertion order).
+  groups.UPCOMING.sort((a, b) => plannedEndTime(a) - plannedEndTime(b));
+  groups.OVERDUE.sort((a, b) => plannedEndTime(a) - plannedEndTime(b));
+  // Completed: most recently finished first.
+  groups.COMPLETED.sort((a, b) => plannedEndTime(b) - plannedEndTime(a));
   return groups;
 }

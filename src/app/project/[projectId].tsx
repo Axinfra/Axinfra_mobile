@@ -7,9 +7,24 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { DetailHeader } from '@/components/nav/detail-header';
 import { Brand, BrandRadius, withAlpha } from '@/constants/brand';
+import { classifyActivity } from '@/lib/activity-status';
 import { apiFetch } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import type { Activity, CostSnapshot, Project } from '@/types';
+
+const DAY_LABEL = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/** "Today" / "Tomorrow" / "Mon" etc., plus a short date. No clock time — every form that sets
+ * `plannedEnd` on the web app only ever collects a plain date, never a time of day, so there's
+ * no real time to show here either. */
+function weekAgenda(iso: string, today: Date): { dayLabel: string; dateLabel: string } {
+  const d = new Date(iso);
+  const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diffDays = Math.round((dayStart.getTime() - today.getTime()) / 86_400_000);
+  const dayLabel = diffDays === 0 ? 'Today' : diffDays === 1 ? 'Tomorrow' : DAY_LABEL[d.getDay()];
+  const dateLabel = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  return { dayLabel, dateLabel };
+}
 
 const STATUS_STYLE: Record<string, { label: string; color: string; bg: string }> = {
   ONGOING: { label: 'Ongoing', color: Brand.accent, bg: withAlpha(Brand.accentRgb, 0.1) },
@@ -65,6 +80,23 @@ export default function ProjectDetailScreen() {
     };
   }, [activities]);
   const recent = (activities ?? []).slice(0, 5);
+
+  const today = useMemo(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }, []);
+  const weekEnd = useMemo(() => new Date(today.getTime() + 6 * 86_400_000), [today]);
+  const thisWeek = useMemo(() => {
+    return (activities ?? [])
+      .filter((a) => {
+        if (!a.plannedEnd) return false;
+        const bucket = classifyActivity(a, today);
+        if (bucket !== 'UPCOMING' && bucket !== 'DUE_TODAY') return false;
+        const due = new Date(a.plannedEnd).getTime();
+        return due >= today.getTime() && due <= weekEnd.getTime();
+      })
+      .sort((a, b) => new Date(a.plannedEnd!).getTime() - new Date(b.plannedEnd!).getTime());
+  }, [activities, today, weekEnd]);
 
   const status = project ? STATUS_STYLE[project.status] : undefined;
 
@@ -125,6 +157,43 @@ export default function ProjectDetailScreen() {
                 )}
               </>
             )}
+
+            <View style={styles.section}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitle}>This Week</Text>
+                <Link href={`/activities/${projectId}`} asChild>
+                  <Pressable><Text style={styles.link}>View all</Text></Pressable>
+                </Link>
+              </View>
+              {thisWeek.length === 0 ? (
+                <Text style={styles.empty}>Nothing scheduled this week.</Text>
+              ) : (
+                <View style={{ gap: 8 }}>
+                  {thisWeek.map((a) => {
+                    const agenda = weekAgenda(a.plannedEnd!, today);
+                    const isToday = agenda.dayLabel === 'Today';
+                    return (
+                      <Link key={a.id} href={`/activities/${projectId}/${a.id}`} asChild>
+                        <Pressable style={styles.weekRow}>
+                          <View style={[styles.weekDayBadge, isToday && styles.weekDayBadgeToday]}>
+                            <Text style={[styles.weekDayLabel, isToday && styles.weekDayLabelToday]}>{agenda.dayLabel}</Text>
+                            <Text style={[styles.weekDateLabel, isToday && styles.weekDayLabelToday]}>{agenda.dateLabel}</Text>
+                          </View>
+                          <View style={styles.weekInfo}>
+                            <Text style={styles.weekTitle} numberOfLines={1}>{a.title}</Text>
+                            <View style={styles.weekMetaRow}>
+                              {a.phase?.name && <Text style={styles.weekMeta}>{a.phase.name}</Text>}
+                              {a.vendorUser?.name && <Text style={styles.weekMeta}>{a.vendorUser.name}</Text>}
+                            </View>
+                          </View>
+                          <Text style={[styles.statePill, { color: STATE_COLOR[a.state] ?? Brand.text }]}>{STATE_LABEL[a.state] ?? a.state}</Text>
+                        </Pressable>
+                      </Link>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
 
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Quick Actions</Text>
@@ -242,4 +311,21 @@ const styles = StyleSheet.create({
   recentTitle: { flex: 1, color: Brand.text, fontSize: 13 },
   statePill: { fontSize: 10, fontWeight: '600' },
   recentDate: { color: withAlpha(Brand.textRgb, 0.4), fontSize: 11, width: 70, textAlign: 'right' },
+  weekRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderRadius: BrandRadius.card, borderWidth: 1, borderColor: Brand.border, backgroundColor: Brand.surface,
+    padding: 10,
+  },
+  weekDayBadge: {
+    width: 44, alignItems: 'center', gap: 1, paddingVertical: 6, borderRadius: BrandRadius.btn,
+    backgroundColor: Brand.overlayHover,
+  },
+  weekDayBadgeToday: { backgroundColor: withAlpha(Brand.accentRgb, 0.15) },
+  weekDayLabel: { color: withAlpha(Brand.textRgb, 0.55), fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
+  weekDateLabel: { color: withAlpha(Brand.textRgb, 0.4), fontSize: 10, fontWeight: '500' },
+  weekDayLabelToday: { color: Brand.accent },
+  weekInfo: { flex: 1, gap: 2 },
+  weekTitle: { color: Brand.text, fontSize: 13, fontWeight: '600' },
+  weekMetaRow: { flexDirection: 'row', gap: 8 },
+  weekMeta: { color: withAlpha(Brand.textRgb, 0.4), fontSize: 11 },
 });
